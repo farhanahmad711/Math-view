@@ -1,120 +1,79 @@
 <!DOCTYPE html>
-<html lang="hi">
+<html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Math Solver</title>
-
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
-
+<title>Math Solver Phase 1</title>
 <style>
-body { margin:0; background:#000; color:white; font-family:sans-serif; }
-#video { width:100vw; height:100vh; object-fit:cover; }
-.controls { position:fixed; bottom:30px; width:100%; text-align:center; }
-button { padding:15px 40px; font-size:18px; border-radius:30px; border:none; background:#fbc531; }
-#result { position:fixed; bottom:0; left:0; width:100%; height:70%; background:white; color:black; padding:20px; overflow:auto; display:none; }
+body { font-family: sans-serif; padding:20px; background:#111; color:white; }
+input, button { padding:10px; font-size:16px; }
+button { background:#fbc531; border:none; margin-left:10px; }
+#output { margin-top:20px; white-space:pre-line; }
 </style>
 </head>
 
 <body>
 
-<video id="video" autoplay playsinline></video>
+<h2>Math Solver 🔢</h2>
 
-<div class="controls">
-<button id="capture">SOLVE</button>
-</div>
+<input id="question" placeholder="Enter question (e.g. 2x+5=15)" size="30">
+<button onclick="solve()">Solve</button>
 
-<div id="result">
-<div id="out">Processing...</div>
-</div>
-
-<canvas id="canvas" style="display:none;"></canvas>
+<div id="output"></div>
 
 <script>
 
-// 🔴 API KEYS YAHAN DAALO
-const WOLFRAM_APP_ID = "7J3PH4ATLU";  
-const GEMINI_API_KEY = "AIzaSyC4clKtpDk8dr9jkN_3N4fFOxVf20EvYjs";  
+const WOLFRAM_APP_ID = "7J3PH4ATLU"; // 🔴 डालो
+const GEMINI_API_KEY = ""; /AIzaSyC4clKtpDk8dr9jkN_3N4fFOxVf20EvYjs/ 🔴 डालो
 
-const video = document.getElementById('video');
+async function solve(){
 
-async function startCamera(){
-    try{
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video:{ facingMode:"environment" }
-        });
-        video.srcObject = stream;
-    }catch(e){
-        alert("Camera allow karo");
-    }
-}
-startCamera();
+    const q = document.getElementById("question").value;
+    const out = document.getElementById("output");
 
-document.getElementById("capture").onclick = async () => {
-
-    const resultBox = document.getElementById("result");
-    const output = document.getElementById("out");
-    resultBox.style.display = "block";
-
-    output.innerText = "📸 Capturing...";
-
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
-
-    // 🔥 optimize size
-    canvas.width = 800;
-    canvas.height = 600;
-    ctx.drawImage(video, 0, 0, 800, 600);
-
-    const image = canvas.toDataURL("image/png");
-
-    // 🧠 OCR
-    output.innerText = "🧠 Reading question...";
-    const { data:{ text } } = await Tesseract.recognize(image, 'eng');
-
-    if(!text.trim()){
-        output.innerText = "❌ Text detect nahi hua";
+    if(!q){
+        out.innerText = "❌ Question likho";
         return;
     }
 
-    output.innerText = "📄 Question:\n" + text + "\n\n⏳ Solving...";
+    out.innerText = "⏳ Solving...";
 
     let answer = "Not found";
 
-    // 🔢 Wolfram solve
+    // 🔢 Wolfram
     try{
         const res = await fetch(
-            `https://api.wolframalpha.com/v2/query?appid=${WOLFRAM_APP_ID}&input=${encodeURIComponent(text)}&output=json`
+        `https://api.allorigins.win/raw?url=https://api.wolframalpha.com/v2/query?appid=${WOLFRAM_APP_ID}&input=${encodeURIComponent(q)}&output=json`
         );
 
         const data = await res.json();
 
         if(data.queryresult.success){
             data.queryresult.pods.forEach(pod=>{
-                if(pod.primary || pod.title === "Result"){
+                if(pod.primary || pod.title==="Result"){
                     answer = pod.subpods[0].plaintext;
                 }
             });
         }
+
     }catch(e){
         answer = "Wolfram error";
     }
 
-    output.innerText += "\n\n✅ Answer:\n" + answer + "\n\n🧠 Generating explanation...";
+    out.innerText = "✅ Answer: " + answer + "\n\n🧠 Explaining...";
 
-    let explanation = "Explain nahi ho paya";
+    let explanation = "Explain failed";
 
-    // 🤖 Gemini explanation
+    // 🤖 Gemini
     try{
         const res2 = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
         {
             method:"POST",
             headers:{ "Content-Type":"application/json" },
             body: JSON.stringify({
                 contents:[{
                     parts:[{
-                        text:`Explain step-by-step in easy Hinglish:\nQuestion: ${text}\nAnswer: ${answer}`
+                        text:`Solve step-by-step in easy Hinglish:\n${q}\nAnswer: ${answer}`
                     }]
                 }]
             })
@@ -130,12 +89,11 @@ document.getElementById("capture").onclick = async () => {
         explanation = "Gemini error";
     }
 
-    // 📊 Final Output
-    output.innerText =
-    "📄 Question:\n" + text +
-    "\n\n✅ Answer:\n" + answer +
+    out.innerText =
+    "📄 Question: " + q +
+    "\n\n✅ Answer: " + answer +
     "\n\n🧠 Explanation:\n" + explanation;
-};
+}
 
 </script>
 
