@@ -1,194 +1,283 @@
 <!DOCTYPE html>
-<html lang="hi">
+<html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Smart Math Solver</title>
+<title>Ultimate Math Solver</title>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 
 <style>
-body { margin:0; font-family:sans-serif; background:#000; color:white; }
-
-/* Camera */
+body { margin:0; background:#000; color:white; font-family:sans-serif; }
 #video { width:100vw; height:100vh; object-fit:cover; }
 
-/* Buttons */
+#selection {
+ position:fixed;
+ border:3px solid yellow;
+ display:none;
+}
+
 .controls {
- position:fixed; bottom:20px; width:100%; text-align:center;
+ position:fixed;
+ bottom:120px;
+ width:100%;
+ text-align:center;
 }
+
 button {
- padding:12px 25px; margin:5px;
- border:none; border-radius:25px;
- background:#fbc531; font-size:16px;
+ padding:10px;
+ margin:5px;
+ border:none;
+ border-radius:10px;
+ background:#fbc531;
 }
 
-/* Result */
 #result {
- position:fixed; bottom:0;
- width:100%; height:70%;
- background:white; color:black;
- padding:15px; overflow:auto;
+ position:fixed;
+ bottom:0;
+ width:100%;
+ height:70%;
+ background:white;
+ color:black;
+ padding:15px;
+ overflow:auto;
  display:none;
 }
 
-/* Typing */
-#typeBox {
- display:none;
- position:fixed; top:20%;
- width:100%; text-align:center;
+/* Calculator */
+#calcBox {
+ position:fixed;
+ bottom:0;
+ width:100%;
+ background:#111;
+ padding:10px;
 }
-input {
- padding:10px; width:70%;
- font-size:16px;
+
+#display {
+ width:95%;
+ padding:10px;
+ font-size:20px;
+ margin-bottom:10px;
 }
 </style>
 </head>
 
 <body>
 
-<!-- Camera -->
 <video id="video" autoplay playsinline></video>
+<div id="selection"></div>
 
-<!-- Typing Mode -->
-<div id="typeBox">
-<input id="question" placeholder="Type question...">
-<br><br>
-<button onclick="solveText()">Solve</button>
-</div>
-
-<!-- Controls -->
 <div class="controls">
 <button onclick="scan()">📸 Scan</button>
-<button onclick="toggleType()">✍️ Type</button>
+<button onclick="showHistory()">📜 History</button>
 </div>
 
-<!-- Result -->
 <div id="result">
 <button onclick="goBack()">⬅️ Back</button>
 <div id="out">Processing...</div>
+</div>
+
+<!-- Calculator -->
+<div id="calcBox">
+<input id="display" readonly>
+
+<div>
+<button onclick="add('7')">7</button>
+<button onclick="add('8')">8</button>
+<button onclick="add('9')">9</button>
+<button onclick="add('/')">÷</button>
+</div>
+
+<div>
+<button onclick="add('4')">4</button>
+<button onclick="add('5')">5</button>
+<button onclick="add('6')">6</button>
+<button onclick="add('*')">×</button>
+</div>
+
+<div>
+<button onclick="add('1')">1</button>
+<button onclick="add('2')">2</button>
+<button onclick="add('3')">3</button>
+<button onclick="add('-')">-</button>
+</div>
+
+<div>
+<button onclick="add('0')">0</button>
+<button onclick="add('.')">.</button>
+<button onclick="clearDisplay()">C</button>
+<button onclick="add('+')">+</button>
+</div>
+
+<div>
+<button onclick="add('sqrt(')">√</button>
+<button onclick="add('^')">^</button>
+<button onclick="add('(')">(</button>
+<button onclick="add(')')">)</button>
+</div>
+
+<div>
+<button onclick="solveCalc()">= Solve</button>
+</div>
+
 </div>
 
 <canvas id="canvas" style="display:none;"></canvas>
 
 <script>
 
-const WOLFRAM_APP_ID = "7J3PH4ATLU";
-const GEMINI_API_KEY = "AIzaSyC4clKtpDk8dr9jkN_3N4fFOxVf20EvYjs";
+const WOLFRAM_APP_ID = "";
+const GEMINI_API_KEY = "";
 
 const video = document.getElementById("video");
+const selection = document.getElementById("selection");
 
-// Camera start
+// Camera
 navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment" }})
-.then(stream => video.srcObject = stream)
-.catch(()=> alert("Camera allow karo"));
+.then(stream => video.srcObject = stream);
 
-// Toggle typing
-function toggleType(){
-    const box = document.getElementById("typeBox");
-    box.style.display = box.style.display === "none" ? "block" : "none";
-}
+// Touch select
+let sx, sy;
+
+document.addEventListener("touchstart", e=>{
+ sx = e.touches[0].clientX;
+ sy = e.touches[0].clientY;
+
+ selection.style.left = sx + "px";
+ selection.style.top = sy + "px";
+ selection.style.display = "block";
+});
+
+document.addEventListener("touchmove", e=>{
+ let x = e.touches[0].clientX;
+ let y = e.touches[0].clientY;
+
+ selection.style.width = Math.abs(x - sx) + "px";
+ selection.style.height = Math.abs(y - sy) + "px";
+});
 
 // Back
 function goBack(){
-    document.getElementById("result").style.display = "none";
+ document.getElementById("result").style.display="none";
 }
 
-// OCR Scan
+// Calculator
+function add(v){
+ document.getElementById("display").value += v;
+}
+
+function clearDisplay(){
+ document.getElementById("display").value="";
+}
+
+function solveCalc(){
+ let text = document.getElementById("display").value;
+ solve(text);
+}
+
+// OCR Clean
+function cleanText(t){
+ return t.replace(/S/g,'5').replace(/O/g,'0').trim();
+}
+
+// Scan
 async function scan(){
 
-    const out = document.getElementById("out");
-    document.getElementById("result").style.display = "block";
+ const rect = selection.getBoundingClientRect();
 
-    out.innerText = "📸 Capturing...";
+ const canvas = document.getElementById("canvas");
+ const ctx = canvas.getContext("2d");
 
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
+ canvas.width = video.videoWidth;
+ canvas.height = video.videoHeight;
 
-    canvas.width = 800;
-    canvas.height = 600;
-    ctx.drawImage(video, 0, 0, 800, 600);
+ ctx.drawImage(video,0,0);
 
-    const img = canvas.toDataURL("image/png");
+ const scaleX = canvas.width/window.innerWidth;
+ const scaleY = canvas.height/window.innerHeight;
 
-    out.innerText = "🧠 Reading...";
-    const { data:{ text } } = await Tesseract.recognize(img, "eng");
+ const x = rect.left*scaleX;
+ const y = rect.top*scaleY;
+ const w = rect.width*scaleX;
+ const h = rect.height*scaleY;
 
-    solve(text);
+ const imgData = ctx.getImageData(x,y,w,h);
+
+ const temp=document.createElement("canvas");
+ temp.width=w;
+ temp.height=h;
+ temp.getContext("2d").putImageData(imgData,0,0);
+
+ const img=temp.toDataURL();
+
+ document.getElementById("result").style.display="block";
+ document.getElementById("out").innerText="Reading...";
+
+ const {data:{text}}=await Tesseract.recognize(img,"eng+hin");
+
+ solve(cleanText(text));
 }
 
-// Solve typing
-function solveText(){
-    const text = document.getElementById("question").value;
-    if(!text) return alert("Question likho");
-    solve(text);
-}
-
-// Main solve
+// Solve
 async function solve(text){
 
-    const out = document.getElementById("out");
-    document.getElementById("result").style.display = "block";
+ const out=document.getElementById("out");
+ out.innerText="Solving...";
 
-    out.innerText = "⏳ Solving...";
+ let answer="Not found";
 
-    let answer = "Not found";
+ try{
+  const res=await fetch(
+  `https://api.allorigins.win/raw?url=https://api.wolframalpha.com/v2/query?appid=${WOLFRAM_APP_ID}&input=${encodeURIComponent(text)}&output=json`
+  );
 
-    // Wolfram
-    try{
-        const res = await fetch(
-        `https://api.allorigins.win/raw?url=https://api.wolframalpha.com/v2/query?appid=${WOLFRAM_APP_ID}&input=${encodeURIComponent(text)}&output=json`
-        );
+  const data=await res.json();
 
-        const data = await res.json();
+  if(data.queryresult.success){
+    data.queryresult.pods.forEach(p=>{
+      if(p.primary||p.title==="Result"){
+        answer=p.subpods[0].plaintext;
+      }
+    });
+  }
 
-        if(data.queryresult.success){
-            data.queryresult.pods.forEach(p=>{
-                if(p.primary || p.title==="Result"){
-                    answer = p.subpods[0].plaintext;
-                }
-            });
-        }
-    }catch(e){
-        answer = "Wolfram error";
-    }
+ }catch(e){}
 
-    out.innerText = "✅ Answer: " + answer + "\n\n🧠 Explaining...";
+ out.innerText="Answer: "+answer+"\nExplaining...";
 
-    let explanation = "Explain failed";
+ let explanation="";
 
-    // Gemini
-    try{
-        const res2 = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-            method:"POST",
-            headers:{ "Content-Type":"application/json" },
-            body: JSON.stringify({
-                contents:[{
-                    parts:[{
-                        text:`Explain step-by-step in Hinglish:\nQuestion: ${text}\nAnswer: ${answer}`
-                    }]
-                }]
-            })
-        });
+ try{
+  const res2=await fetch(
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+  {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      contents:[{
+        parts:[{
+          text:`Explain step by step:\n${text}\nAnswer:${answer}`
+        }]
+      }]
+    })
+  });
 
-        const data2 = await res2.json();
-        if(data2.candidates){
-            explanation = data2.candidates[0].content.parts[0].text;
-        }
+  const data2=await res2.json();
+  explanation=data2.candidates[0].content.parts[0].text;
 
-    }catch(e){
-        explanation = "Gemini error";
-    }
+ }catch(e){}
 
-    out.innerText =
-    "📄 Question:\n" + text +
-    "\n\n✅ Answer:\n" + answer +
-    "\n\n🧠 Explanation:\n" + explanation;
+ out.innerText="Q: "+text+"\n\nAns: "+answer+"\n\n"+explanation;
+}
+
+// History
+function showHistory(){
+ let h=localStorage.getItem("h")||"No history";
+ document.getElementById("result").style.display="block";
+ document.getElementById("out").innerText=h;
 }
 
 </script>
 
 </body>
-</html>
+ </html>
