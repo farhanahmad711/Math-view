@@ -3,25 +3,69 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Math Scanner</title>
+<title>Smart Math Solver</title>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 
 <style>
-body { margin:0; background:#000; color:white; font-family:sans-serif; }
+body { margin:0; font-family:sans-serif; background:#000; color:white; }
+
+/* Camera */
 #video { width:100vw; height:100vh; object-fit:cover; }
-button { position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
-padding:15px 40px; font-size:18px; border:none; border-radius:30px; background:#fbc531; }
-#result { position:fixed; bottom:0; width:100%; height:65%; background:white; color:black; padding:15px; overflow:auto; display:none; }
+
+/* Buttons */
+.controls {
+ position:fixed; bottom:20px; width:100%; text-align:center;
+}
+button {
+ padding:12px 25px; margin:5px;
+ border:none; border-radius:25px;
+ background:#fbc531; font-size:16px;
+}
+
+/* Result */
+#result {
+ position:fixed; bottom:0;
+ width:100%; height:70%;
+ background:white; color:black;
+ padding:15px; overflow:auto;
+ display:none;
+}
+
+/* Typing */
+#typeBox {
+ display:none;
+ position:fixed; top:20%;
+ width:100%; text-align:center;
+}
+input {
+ padding:10px; width:70%;
+ font-size:16px;
+}
 </style>
 </head>
 
 <body>
 
+<!-- Camera -->
 <video id="video" autoplay playsinline></video>
-<button id="capture">SCAN</button>
 
+<!-- Typing Mode -->
+<div id="typeBox">
+<input id="question" placeholder="Type question...">
+<br><br>
+<button onclick="solveText()">Solve</button>
+</div>
+
+<!-- Controls -->
+<div class="controls">
+<button onclick="scan()">📸 Scan</button>
+<button onclick="toggleType()">✍️ Type</button>
+</div>
+
+<!-- Result -->
 <div id="result">
+<button onclick="goBack()">⬅️ Back</button>
 <div id="out">Processing...</div>
 </div>
 
@@ -34,23 +78,27 @@ const GEMINI_API_KEY = "AIzaSyC4clKtpDk8dr9jkN_3N4fFOxVf20EvYjs";
 
 const video = document.getElementById("video");
 
-async function startCamera(){
-    try{
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video:{ facingMode:"environment" }
-        });
-        video.srcObject = stream;
-    }catch(e){
-        alert("Camera allow karo");
-    }
-}
-startCamera();
+// Camera start
+navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment" }})
+.then(stream => video.srcObject = stream)
+.catch(()=> alert("Camera allow karo"));
 
-document.getElementById("capture").onclick = async () => {
+// Toggle typing
+function toggleType(){
+    const box = document.getElementById("typeBox");
+    box.style.display = box.style.display === "none" ? "block" : "none";
+}
+
+// Back
+function goBack(){
+    document.getElementById("result").style.display = "none";
+}
+
+// OCR Scan
+async function scan(){
 
     const out = document.getElementById("out");
-    const resultBox = document.getElementById("result");
-    resultBox.style.display = "block";
+    document.getElementById("result").style.display = "block";
 
     out.innerText = "📸 Capturing...";
 
@@ -63,20 +111,30 @@ document.getElementById("capture").onclick = async () => {
 
     const img = canvas.toDataURL("image/png");
 
-    // 🧠 OCR
     out.innerText = "🧠 Reading...";
     const { data:{ text } } = await Tesseract.recognize(img, "eng");
 
-    if(!text.trim()){
-        out.innerText = "❌ Text detect nahi hua";
-        return;
-    }
+    solve(text);
+}
 
-    out.innerText = "📄 " + text + "\n\n⏳ Solving...";
+// Solve typing
+function solveText(){
+    const text = document.getElementById("question").value;
+    if(!text) return alert("Question likho");
+    solve(text);
+}
+
+// Main solve
+async function solve(text){
+
+    const out = document.getElementById("out");
+    document.getElementById("result").style.display = "block";
+
+    out.innerText = "⏳ Solving...";
 
     let answer = "Not found";
 
-    // 🔢 Wolfram
+    // Wolfram
     try{
         const res = await fetch(
         `https://api.allorigins.win/raw?url=https://api.wolframalpha.com/v2/query?appid=${WOLFRAM_APP_ID}&input=${encodeURIComponent(text)}&output=json`
@@ -85,22 +143,21 @@ document.getElementById("capture").onclick = async () => {
         const data = await res.json();
 
         if(data.queryresult.success){
-            data.queryresult.pods.forEach(pod=>{
-                if(pod.primary || pod.title==="Result"){
-                    answer = pod.subpods[0].plaintext;
+            data.queryresult.pods.forEach(p=>{
+                if(p.primary || p.title==="Result"){
+                    answer = p.subpods[0].plaintext;
                 }
             });
         }
-
     }catch(e){
         answer = "Wolfram error";
     }
 
-    out.innerText += "\n\n✅ Answer: " + answer + "\n\n🧠 Explaining...";
+    out.innerText = "✅ Answer: " + answer + "\n\n🧠 Explaining...";
 
     let explanation = "Explain failed";
 
-    // 🤖 Gemini
+    // Gemini
     try{
         const res2 = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
@@ -117,7 +174,6 @@ document.getElementById("capture").onclick = async () => {
         });
 
         const data2 = await res2.json();
-
         if(data2.candidates){
             explanation = data2.candidates[0].content.parts[0].text;
         }
@@ -130,7 +186,7 @@ document.getElementById("capture").onclick = async () => {
     "📄 Question:\n" + text +
     "\n\n✅ Answer:\n" + answer +
     "\n\n🧠 Explanation:\n" + explanation;
-};
+}
 
 </script>
 
